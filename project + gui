@@ -1,0 +1,227 @@
+from PIL import Image
+
+
+def genData(data):
+
+    # list of binary codes
+    # of given data
+    newd = []
+
+    for i in data:
+        newd.append(format(ord(i), '08b'))
+    return newd
+
+# Pixels are modified according to the
+# 8-bit binary data and finally returned
+
+
+def modPix(pix, data):
+
+    datalist = genData(data)
+    lendata = len(datalist)
+    imdata = iter(pix)
+
+    for i in range(lendata):
+
+        # Extracting 3 pixels at a time
+        pix = [value for value in imdata._next_()[:3] +
+               imdata._next_()[:3] +
+               imdata._next_()[:3]]
+
+        # Pixel value should be made
+        # odd for 1 and even for 0
+        for j in range(0, 8):
+            if (datalist[i][j] == '0' and pix[j] % 2 != 0):
+                pix[j] -= 1
+
+            elif (datalist[i][j] == '1' and pix[j] % 2 == 0):
+                if(pix[j] != 0):
+                    pix[j] -= 1
+                else:
+                    pix[j] += 1
+                # pix[j] -= 1
+
+        # Eighth pixel of every set tells
+        # whether to stop ot read further.
+        # 0 means keep reading; 1 means thec
+        # message is over.
+        if (i == lendata - 1):
+            if (pix[-1] % 2 == 0):
+                if(pix[-1] != 0):
+                    pix[-1] -= 1
+                else:
+                    pix[-1] += 1
+
+        else:
+            if (pix[-1] % 2 != 0):
+                pix[-1] -= 1
+
+        pix = tuple(pix)
+        yield pix[0:3]
+        yield pix[3:6]
+        yield pix[6:9]
+
+
+def encode_enc(newimg, data):
+    w = newimg.size[0]
+    (x, y) = (0, 0)
+
+    for pixel in modPix(newimg.getdata(), data):
+
+        # Putting modified pixels in the new image
+        newimg.putpixel((x, y), pixel)
+        if (x == w - 1):
+            x = 0
+            y += 1
+        else:
+            x += 1
+
+# Encode data into image
+
+
+def encode(data):
+    if data is None:
+        return
+
+    if (len(data) == 0):
+        raise ValueError('Data is empty')
+
+    global image
+    encode_enc(image, data)
+
+    enable_buttons(export_btn)
+
+# Decode the data in the image
+
+
+from tkinter import StringVar, messagebox as msgb
+
+
+def decode():
+
+    data = ''
+
+    global image
+    imgdata = iter(image.getdata())
+
+    while (True):
+        try:
+            pixels = [value for value in imgdata._next_()[:3] +
+                      imgdata._next_()[:3] +
+                      imgdata._next_()[:3]]
+        except:
+            msgb.showinfo('Error', 'No Hidden Data Found')
+            return None
+        # string of binary data
+        binstr = ''
+
+        for i in pixels[:8]:
+            if (i % 2 == 0):
+                binstr += '0'
+            else:
+                binstr += '1'
+
+        data += chr(int(binstr, 2))
+        if (pixels[-1] % 2 != 0):
+            msgb.showinfo('Hidden Data', data)
+            return None
+
+
+import tkinter as tk
+import tkinter.filedialog as file_dialog
+
+
+img = None
+
+
+def open_image(event):
+
+    try:
+        image_name = file_dialog.askopenfile().name
+
+        global image
+        image = Image.open(image_name, 'r')
+    except:
+        pass
+    else:
+        global img
+        img = tk.PhotoImage(file=image_name)
+        img.configure(height=300, width=300)
+
+        event.widget.create_image(0, 0, image=img, anchor='nw')
+
+        has_opened.set(True)
+
+
+def get_data():
+    global app
+    dialog = tk.Toplevel(app)
+    dialog.title("Enter message")
+    dialog.resizable(False, False)
+    dialog.transient(app)
+
+    data = StringVar(app)
+
+    entry = tk.Entry(dialog)
+    entry.pack(pady=5, padx=5)
+
+    def set_data():
+        data.set(entry.get())
+        dialog.destroy()
+
+    tk.Button(dialog, text='OK', command=set_data).pack(
+        side='right', pady=(0, 5), padx=5)
+
+    dialog.grab_set()
+    app.wait_window(dialog)
+    dialog.grab_release()
+
+    return None if data.get() == '' else data.get()
+
+
+def export():
+    image_name = file_dialog.asksaveasfilename(
+        filetypes=[('Image File', '*.png')])
+    image.save(image_name, str(image_name.split(".")[1].lower()))
+
+
+def enable_buttons(*buttons):
+    for button in buttons:
+        button.config(state='normal')
+
+
+app = tk.Tk()
+app.title("Image Steganography")
+app.geometry("700x400")
+app.resizable(False, False)
+
+has_opened = tk.BooleanVar(value=False)
+
+image = None
+
+app.columnconfigure(1, weight=1)
+
+canvas = tk.Canvas(app, height=300, width=300, cursor='hand2', bg='#ccc')
+canvas.grid(row=0, column=0, padx=50, pady=50)
+
+canvas.create_text((150, 150), anchor='center', text='Click to Open Image')
+canvas.bind('<Button-1>', open_image)
+
+
+frame = tk.Frame(app, height=300)
+frame.grid(row=0, column=1, sticky='ew', padx=(0, 50))
+
+decode_btn = tk.Button(frame, state='disabled', text='Decode', command=decode)
+
+export_btn = tk.Button(frame, state='disabled', text='Export', command=export)
+
+encode_btn = tk.Button(frame, state='disabled', text='Encode',
+                       command=lambda: encode(get_data()))
+
+encode_btn.pack(side='top', anchor='center', pady=(0, 5))
+decode_btn.pack(side='top', anchor='center', pady=(0, 5))
+export_btn.pack(side='top', anchor='center', pady=0)
+
+has_opened.trace('w', lambda e, a, b: enable_buttons(encode_btn, decode_btn))
+
+app.mainloop()
